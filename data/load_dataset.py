@@ -235,9 +235,38 @@ class movingToysDataset():
         return clips_te, (dlabels_te, clabels_te)
 
 
+def clip_torchfloat2float(clip_te):
+    # clip_te: range=[-1.,1.]. shape=(N,C,W,H)
+    clip2 = clip_te.detach().numpy().transpose(0,2,3,1)
+    # img3 = img2*2-1
+    clip3 = (clip2/2)+0.5
+    return clip3#.astype(np.uint8)#skutil.img_as_ubyte(img3)
+
+def clip_float2torchfloat(clip_np):
+    # clip_np: range=[0.,1.]. shape=(N,W,H,C)
+    clip2 = clip_np*2 -1.
+    clip3 = torch.permute(
+        torch.as_tensor(clip2, dtype=torch.float32),
+            (0, 3, 1, 2))
+    return clip3
+
+def clip_uint2torchfloat(clip_np):
+    clip2 = 2*(clip_np.astype(np.float32)/255 -0.5)
+    clip3 = torch.permute(
+        torch.as_tensor(clip2, dtype=torch.float32),
+            (0, 3, 1, 2))
+    return clip3
+
 class movingToysTorchDataset(torch.utils.data.Dataset):
-    def __init__(self):
-        pass
+    def __init__(self, data):
+        self.data = data
+    def __getitem__(self, idx):
+        # assuming idx is an int
+        xclips, (dlabels, clabels) = self.data[idx]
+        xclips2 = clip_uint2torchfloat(xclips)
+        return xclips2, (torch.as_tensor(dlabels), torch.as_tensor(clabels))
+    def __len__(self):
+        return len(self.data)
     
 dataset_path = 'ds_jan12.hdf'
 filetype = 'hdf'
@@ -251,6 +280,8 @@ train_idx, test_idx = dset.train_test_split_idx()
 
 train_data = dset.get_sample_set(train_idx)
 
+train_data_te = movingToysTorchDataset(train_data)
+
 xds = train_data
 def get_narr_mem(narr):
     return narr.size*narr.itemsize
@@ -263,15 +294,17 @@ print('Train dataset size in megabytes: ', size_on_mem/(1024*1024))
 
 # Creating a torch dataloader
 train_dataloader = torch.utils.data.DataLoader(
-    train_data, batch_size=64, shuffle=True)
-train_features, train_labels = next(iter(train_dataloader))
-print(f"Feature batch shape: {train_features.size()}")
-print(f"Labels batch shape: {train_labels[0].size()}{train_labels[1].size()}")
-xclip = train_features[0].squeeze()
+    train_data_te, batch_size=64, shuffle=True)
 
-xclip, (xdlabel, xclabel)=train_data[101]
-plt.imshow(xclip[1,...])
 
-clips_te, (dlabels_te, clabels_te) = dset.get_torchtensor(train_data)
+# train_features, train_labels = next(iter(train_dataloader))
+# print(f"Feature batch shape: {train_features.size()}")
+# print(f"Labels batch shape: {train_labels[0].size()}{train_labels[1].size()}")
+# xclip = train_features[0].squeeze()
+
+# xclip, (xdlabel, xclabel)=train_data[101]
+# plt.imshow(xclip[1,...])
+
+# clips_te, (dlabels_te, clabels_te) = dset.get_torchtensor(train_data)
 
 
