@@ -219,8 +219,8 @@ hist_fields = ['posD', 'posA', 'posE', 'rotX', 'rotY', 'rotZ',
 mk_const = MakeDataset(target_fields=fields)
 
 # ds_dir= '../saved_images/dataset_Dec20/'
-ds_dir= '../saved_images/dataset_Jan12/'
-mk_const.make(ds_dir, 'ds_jan12')
+ds_dir= '../saved_images/dataset_Jan25/'
+mk_const.make(ds_dir, 'ds_jan25')
 
 
 # This code correctly generates the hdf file. 

@@ -235,27 +235,41 @@ class movingToysDataset():
         return clips_te, (dlabels_te, clabels_te)
 
 
-def clip_torchfloat2float(clip_te):
+def change_range(data, old_range, new_range):
+    assert len(old_range)==2 and len(new_range)==2
+    old_loc = np.mean(old_range)
+    old_scale = old_range[1]-old_loc
+
+    new_loc = np.mean(new_range)
+    new_scale = new_range[1]-new_loc
+
+    ratio = new_scale/old_scale
+    return ((data-old_loc)*ratio)+new_loc
+
+def clip_torchfloat2npimage(clip_te, from_range=[0,1], to_range=[0,1], to_dtype=np.float32):
     # clip_te: range=[-1.,1.]. shape=(N,C,W,H)
     clip2 = clip_te.detach().numpy().transpose(0,2,3,1)
     # img3 = img2*2-1
-    clip3 = (clip2/2)+0.5
-    return clip3#.astype(np.uint8)#skutil.img_as_ubyte(img3)
+    if from_range!=to_range:
+        clip2 = change_range(clip2, from_range, to_range)#(clip2/2)+0.5
+    return clip2.astype(to_dtype)
 
-def clip_float2torchfloat(clip_np):
-    # clip_np: range=[0.,1.]. shape=(N,W,H,C)
-    clip2 = clip_np*2 -1.
-    clip3 = torch.permute(
-        torch.as_tensor(clip2, dtype=torch.float32),
+def clip_npimage2torchfloat(clip_np, from_range=[0,1], to_range=[0,1]):
+    # clip_np: shape=(N,W,H,C)
+    if from_range!=to_range:
+        clip_np = change_range(clip_np.astype(np.float32), 
+            from_range, to_range)
+    clip2 = torch.permute(
+        torch.as_tensor(clip_np, dtype=torch.float32),
             (0, 3, 1, 2))
-    return clip3
+    return clip2
 
-def clip_uint2torchfloat(clip_np):
-    clip2 = 2*(clip_np.astype(np.float32)/255 -0.5)
-    clip3 = torch.permute(
-        torch.as_tensor(clip2, dtype=torch.float32),
-            (0, 3, 1, 2))
-    return clip3
+# def clip_uint2torchfloat(clip_np, from_range):
+#     clip2 = 2*(clip_np.astype(np.float32)/255 -0.5)
+#     clip3 = torch.permute(
+#         torch.as_tensor(clip2, dtype=torch.float32),
+#             (0, 3, 1, 2))
+#     return clip3
 
 class movingToysTorchDataset(torch.utils.data.Dataset):
     def __init__(self, data):
@@ -263,12 +277,13 @@ class movingToysTorchDataset(torch.utils.data.Dataset):
     def __getitem__(self, idx):
         # assuming idx is an int
         xclips, (dlabels, clabels) = self.data[idx]
-        xclips2 = clip_uint2torchfloat(xclips)
+        xclips2 = clip_npimage2torchfloat(xclips, 
+            from_range=(0,255), to_range=(0,1))
         return xclips2, (torch.as_tensor(dlabels), torch.as_tensor(clabels))
     def __len__(self):
         return len(self.data)
     
-dataset_path = 'ds_jan12.hdf'
+dataset_path = 'ds_jan25.hdf'
 filetype = 'hdf'
 
 dset = movingToysDataset(dataset_path, filetype=filetype)
@@ -290,7 +305,7 @@ size_on_mem = len(xds)*(
         get_narr_mem(xds[0][1][0])+\
             get_narr_mem(xds[0][1][1]))
 
-print('Train dataset size in megabytes: ', size_on_mem/(1024*1024))
+print('Train dataset size on memory (in megabytes): ', size_on_mem/(1024*1024))
 
 # Creating a torch dataloader
 train_dataloader = torch.utils.data.DataLoader(
