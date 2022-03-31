@@ -1,6 +1,6 @@
 # Definition of nn models
 # When testing them, the module load_dataset is needed.
-
+# Includes SUmmaryWriter boilerplate for sending the signals to tensorboard
 import copy
 from functools import partialmethod
 import warnings
@@ -111,36 +111,6 @@ class Encoder0(nn.Module):
         return feats
 
 
-class Reservoir0(nn.Module):
-
-    # A fully linear unit
-    # Does not accept sequences, but does maintain a state
-    
-  def __init__(self, n_in, n_hidden=20):
-    super().__init__()
-    
-    self.n_in = n_in
-    self.n_hidden = n_hidden
-    self.state = torch.zeros((n_in, n_hidden))
-    self.w_in = nn.Parameter(torch.rand(n_in, n_hidden))
-    # self.w_out = nn.Parameter(torch.rand(n_in, n_hidden))
-    
-    # a fixed auxilliary tensor, used in every forward() call.
-    self.ones = torch.ones_like(self.state)
-
-  def init_state(self):
-      self.state = torch.zeros((self.n_in, self.n_hidden))
-      
-  def forward(self, xin):
-    assert len(xin.shape)==2
-    # assumes xin is of shape (N, n_in)
-    xin = torch.unsqueeze(xin, dim=-1)
-    # xin: (N, n_in, 1)
-    self.state = torch.mul(xin, self.w_in)+ \
-                 torch.mul(self.state, (self.ones-self.w_in))
-    # self.out = torch.mul(self.state, self.w_out).sum(dim=-1)
-    return self.state
-
 
 class FullModel0(nn.Module):
     def __init__(self, input_dim=(3,64,64), output_dim=7, encoder_h=84, 
@@ -193,7 +163,116 @@ class FullModel0(nn.Module):
             return out, enc_out, res_out
         return out
     
+class DorsalPathway0(nn.Module):
+    def __init__(self, n_in, n_out, n_layers=2, n_hidden=30):
+      super().__init__()
+      self.n_in = n_in
+      self.n_out = n_out
+      self.n_hidden = n_hidden
+      self.n_layers = n_layers
+      
+      self.rnn = nn.LSTM(n_in, n_hidden, n_layers, batch_first=True)
+      self.res_w_out = nn.Linear(n_hidden, n_out)
+      
+    def init_state(self, batch_size):
+        h0 = torch.randn(self.n_layers, batch_size, self.n_hidden)
+        c0 = torch.randn(self.n_layers, batch_size, self.n_hidden)
+        return h0,c0
+        
+    def forward(self, xin):
+      assert len(xin.shape)==3
+      # assumes xin is of shape (N, L, n_in)
+      batch_size, seq_len, _ = xin.shape
+      # xin = torch.unsqueeze(xin, dim=-1)
+      h0, c0 = self.init_state(batch_size)
+      rnn_out, (hn, cn) = self.rnn(xin, (h0, c0))
+      
+      # dorsal_out = self.res_w_out(rnn_out)
+      # xin: (N, n_in, 1)
+      return rnn_out   
+     
+      
+class DualModel0(nn.Module):
+    def __init__(self, input_dim=(10,3,64,64), output_dimv=10, output_dimd=7, encoder_h=84, 
+                 rnn_h=30, debug=False):
+        super().__init__()
+        
+        self.input_dim = input_dim
+        self.output_dimv = output_dimv
+        self.output_dimd = output_dimd
+        self.encoder_h = encoder_h
+        self.rnn_h = rnn_h
+        self.debug = debug
+        
+        self.encoder = Encoder0(feat_size=encoder_h, input_dim=input_dim[1:])
+        self.fc_enc = nn.Linear(encoder_h, encoder_h)
+        
+        self.ventral = nn.Linear(encoder_h, output_dimv)
+        
+        self.dorsal = DorsalPathway0(encoder_h, 30, n_layers=2, n_hidden=30)
+        
+        
+        # self.res_w_out = nn.Parameter(torch.rand(encoder_h, reservoir_h))
+        # self.fc_out = nn.Linear(encoder_h, output_dim)
     
+        # self.linear_projections = nn.Sequential(
+        #         nn.Linear(encoder_h, 120),
+        #         nn.ReLU(),
+        #         nn.BatchNorm1d(120, affine=False),
+        #         nn.Linear(120, 84),
+        #         nn.ReLU(),
+        #         nn.BatchNorm1d(84, affine=False),
+        #     )
+    
+        # self.linear_projections_output = nn.Sequential(
+        #         nn.Linear(84, output_dim),
+        #         nn.ReLU(),
+        #         nn.BatchNorm1d(output_dim, affine=False)
+        #     )
+        
+    def init_state(self):
+      self.reservoir.init_state()
+        
+    def forward(self, batch_seq):
+        
+        orig_shape = batch_seq.shape
+        # For the static part, collapse the sequence dim into the batch dim.
+        batch_img = batch_seq.reshape(-1, *orig_shape[2:])
+        
+        enc_out = self.encoder(batch_img) #out dim=(N,encoder_h)
+        
+        ventral_out = self.ventral(enc_out)
+        ventral_out = ventral_out.reshape(*orig_shape[:2], -1)
+        
+        dorsal_in = enc_out.reshape(*orig_shape[:2], -1)
+        dorsal_out = self.dorsal(dorsal_in)
+        return ventral_out, dorsal_out
+        # # enc_out = 0.1*torch.rand(batch_img.shape[0], self.encoder_h) #debug @@@@
+        # # enc_out = 0.1*torch.ones(batch_img.shape[0], self.encoder_h) #debug @@@@
+        # res_state = self.reservoir(enc_out)#dim=(N,reservoir_h, encoder_h)
+        # print('res_state shape: ', res_state.shape)
+        # res_out = F.relu(
+        #     torch.mul(res_state, self.res_w_out).sum(dim=-1)
+        #     )#dim=(N,encoder_h)
+        # res_flat_expansion = self.linear_projections(res_out)
+        # out = self.linear_projections_output(res_flat_expansion)
+        
+        # if self.debug:
+        #     return out, enc_out, res_out
+        # return out
+ 
+
+xmodel0 = DualModel0(input_dim=(10,3,64,64), output_dimv=10, output_dimd=7, encoder_h=84, 
+             rnn_h=30, debug=False)
+
+yv, yd = xmodel0(xclips)
+
+yv_np = yv.detach().numpy()
+yd_np = yd.detach().numpy()
+
+plt.plot(yv_np[0, :,0])
+plt.plot(yd_np[0, :,0])
+
 
 import matplotlib.pyplot as plt
 
@@ -272,8 +351,8 @@ xmodel = FullModel0(input_dim=(3,64,64), output_dim=7, encoder_h=84,
                  reservoir_h=20, debug=True)
 xmodel.eval()
 
-len_clip = 4
-batch_size = len(xclips)
+len_clip = 10 #4
+batch_size = xclips.shape[0]
 
 xencs = []
 xress = []

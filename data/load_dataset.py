@@ -1,15 +1,17 @@
 # Functions for properly loading the HDF files into a Torch dataset for a training task.
+#%%
 import numpy as np
 import torch, torchvision
 import skimage 
-from skimage import color as skcolor
-from skimage import util as skutil
+# from skimage import color as skcolor
+# from skimage import util as skutil
 import h5py
 from copy import deepcopy
 from sklearn.preprocessing import StandardScaler
 
 import matplotlib.pyplot as plt
 
+#%%
 def weighted_mse_loss(pred, target, weight):
     return torch.sum(weight * (pred - target) ** 2)
 
@@ -130,14 +132,20 @@ class movingToysDataset():
     def make_targets(self):
         target_names = (
             ['shape'],
-            ['dPosD',
-            'dPosA',
-            'dPosE',
-            'dRotAxX',
-            'dRotAxY',
-            'dRotAxZ',
-            'dRot']
+            ['posD',
+            'posA',
+            'posE']
             )
+        # target_names = (
+        #     ['shape'],
+        #     ['dPosD',
+        #     'dPosA',
+        #     'dPosE',
+        #     'dRotAxX',
+        #     'dRotAxY',
+        #     'dRotAxZ',
+        #     'dRot']
+        #     )
         # dtarget_inds, ctarget_inds = dset._choose_targets(target_names)
         dtarget_inds, ctarget_inds = self._choose_targets(target_names)
         
@@ -234,7 +242,7 @@ class movingToysDataset():
         clips_te = torch.permute(clips_te, (0, 1, 4, 2, 3))
         return clips_te, (dlabels_te, clabels_te)
 
-
+#%%
 def change_range(data, old_range, new_range):
     assert len(old_range)==2 and len(new_range)==2
     old_loc = np.mean(old_range)
@@ -271,6 +279,7 @@ def clip_npimage2torchfloat(clip_np, from_range=[0,1], to_range=[0,1]):
 #             (0, 3, 1, 2))
 #     return clip3
 
+#%%
 class movingToysTorchDataset(torch.utils.data.Dataset):
     def __init__(self, data):
         self.data = data
@@ -279,10 +288,12 @@ class movingToysTorchDataset(torch.utils.data.Dataset):
         xclips, (dlabels, clabels) = self.data[idx]
         xclips2 = clip_npimage2torchfloat(xclips, 
             from_range=(0,255), to_range=(0,1))
-        return xclips2, (torch.as_tensor(dlabels), torch.as_tensor(clabels))
+        return xclips2, (torch.as_tensor(dlabels, dtype=torch.float32), 
+                         torch.as_tensor(clabels, dtype=torch.float32))
     def __len__(self):
         return len(self.data)
     
+#%%
 dataset_path = 'ds_jan25.hdf'
 filetype = 'hdf'
 
@@ -292,9 +303,7 @@ _ = dset.make_targets()
 _ = dset.preprocess_images()
 
 train_idx, test_idx = dset.train_test_split_idx()
-
 train_data = dset.get_sample_set(train_idx)
-
 train_data_te = movingToysTorchDataset(train_data)
 
 xds = train_data
@@ -309,8 +318,12 @@ print('Train dataset size on memory (in megabytes): ', size_on_mem/(1024*1024))
 
 # Creating a torch dataloader
 train_dataloader = torch.utils.data.DataLoader(
-    train_data_te, batch_size=64, shuffle=True)
+    train_data_te, batch_size=32, shuffle=True)
 
+test_data = dset.get_sample_set(test_idx)
+test_data_te = movingToysTorchDataset(test_data)
+test_dataloader = torch.utils.data.DataLoader(
+    test_data_te, batch_size=32, shuffle=True)
 
 # train_features, train_labels = next(iter(train_dataloader))
 # print(f"Feature batch shape: {train_features.size()}")
