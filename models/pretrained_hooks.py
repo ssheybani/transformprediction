@@ -1,10 +1,11 @@
 
 #%% Imports
-from torch.utils.tensorboard import SummaryWriter
-import torch
-from torch.nn import functional as F
-import torchvision
+
 import numpy as np
+import matplotlib.pyplot as plt
+from torch.utils.tensorboard import SummaryWriter
+import torch, torchvision
+from torch.nn import functional as F
 
 #%% Data loading
 train_dataloader = torch.utils.data.DataLoader(

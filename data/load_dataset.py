@@ -128,7 +128,18 @@ class movingToysDataset():
         ctargets_tr_reshaped = self.scaler.transform(ctargets_reshaped)
         ctargets_tr = ctargets_tr_reshaped.reshape(ctargets_shape)
         return ctargets_tr
-
+    
+    def _preprocess_digitize(self, ctargets):
+        # assumes ctargets is already centered and scaled.
+        ctargets_shape = ctargets.shape
+        ctargets_reshaped = ctargets.reshape(-1, ctargets.shape[-1])
+        # bins = [-1, -0.5, -0.2, -0.1, 0, 0.1, 0.2, 0.5, 1]
+        bins = [-2, -1, -0.5, -0.25, 0., 0.25, 0.5, 1., 2.]
+        ctargets_tr_reshaped = np.digitize(ctargets_reshaped, bins)
+        ctargets_tr = ctargets_tr_reshaped.reshape(ctargets_shape)
+        return ctargets_tr
+        
+        
     def make_targets(self):
         target_names = (
             ['shape'],
@@ -156,6 +167,7 @@ class movingToysDataset():
         # _ = plt.hist(ytt[...,1].flatten())
         self.ctargets = self._preprocess_continuous_targets(
             self.ctargets)
+        self.ctargets = self._preprocess_digitize(self.ctargets)
         return self.dtargets, self.ctargets
 
     def preprocess_images(self, **kwargs):
