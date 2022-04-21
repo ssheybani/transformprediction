@@ -64,8 +64,6 @@ transform = Compose(
 # Given the conflict between pytorchvideo and other packages, it'd be better to write
 # uniform_temporal_subsample and ShortSideScale manually.
 
-#%%% Random Video Dataset
-
 
 #%%% Create the dataloader
 vid_root = r'C:/Users/Saber/Documents/tmp_dir/CharadesEgo_preproc/'
@@ -161,8 +159,8 @@ input_dim = (3,64,64)
 print(get_feat_extr_output_size(xmodel, input_dim))
 
 #%% Instantiation
-xmodel = torchvision.models.resnet18(pretrained=False)
-hdim = 100
+xmodel = torchvision.models.resnet50(pretrained=False)
+hdim = 1000
 seq_len = xclips.shape[1]
 xmodel.fc = nn.Linear(512, hdim)
 # nn.init.kaiming_normal_(xmodel.fc.weight, a=0, mode='fan_in', nonlinearity='leaky_relu')
@@ -176,8 +174,11 @@ xmodel.train()
 #     {'params': xmodel.dorsal.parameters(), 'lr': 1e-4}
 #     ], lr=1e-1, weight_decay=0, amsgrad=False)
 
-optimizer = torch.optim.SGD(xmodel.parameters(), lr=1e-2, 
-                            weight_decay=1e-4)
+optimizer = torch.optim.Adam(xmodel.parameters(), lr=1e-3, 
+                            weight_decay=0)
+
+# optimizer = torch.optim.SGD(xmodel.parameters(), lr=1e-2, 
+#                             weight_decay=1e-4)
     
 # optimizer_name="SGD":optimizer_hparams={
     # "lr": 0.1,"momentum": 0.9,"weight_decay": 1e-4})  
@@ -224,7 +225,7 @@ for epoch in range(num_epochs):
         
         # Forward propagation
         yh = to_seq( 
-            xmodel(to_static(clips)),
+            xmodel(to_static(xclips)),
             seq_len)
         
         a_t = np.random.randint(0,seq_len)
