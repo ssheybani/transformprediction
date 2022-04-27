@@ -83,6 +83,7 @@ transforms_ego4d = Compose(
      Lambda(to_uint)
      ])
 #T,H,W,C
+
 #%%% Ego4D Dataset: collect metadata
 
 
@@ -90,21 +91,45 @@ transforms_ego4d = Compose(
 vid_root = r"/N/slate/sheybani/ego4ddata/v1/clips/"
 out_root = r"/N/slate/sheybani/ego4ddata/preprocessed_clips/"
 sample_paths = os.listdir(vid_root)
-    
-n_samples = 3
-for i in tqdm(range(n_samples)):
+
+vp = sample_paths[6]
+vid_in = torchvision.io.read_video(vid_root+vp, start_pts=1000., 
+                                   end_pts=1002., pts_unit='sec')[0][0:-1:ss_rate, ...]
+# reader = torchvision.io.VideoReader(vid_root+vp, 'video')
+
+#%%    
+chunk_size = 60 #1 minute per video
+start_sample = 0
+end_sample = 500
+for i in tqdm(range(start_sample, end_sample)):
     vp = sample_paths[i]
+    vp_prefix, vp_suffix = vp.split('.')
+    
+    if (vp_suffix !='mp4') and (vp_suffix !='MP4'):
+        continue
     try:
-        vid_in = torchvision.io.read_video(vid_root+vp)[0]
-    except Exception as exception:
-        traceback.print_exc()
-        continue
-    if len(vid_in)==0:
-        print('Empty input tensor at '+vp)
-        continue
-    vid_ss = subsample(vid_in, ss_rate)
-    vid_out = transforms_ego4d(vid_ss)
-    torchvision.io.write_video(out_root+vp, vid_out, 1, video_codec='libx264')
+        chunks_dir = out_root+vp_prefix
+        os.mkdir(chunks_dir)
+    except OSError as error: 
+        print(error)
+    ch_num = 0
+    while 1:
+        try:
+            vid_in = torchvision.io.read_video(vid_root+vp, 
+                                               start_pts=ch_num*chunk_size, 
+                                               end_pts=(ch_num+1)*chunk_size, 
+                                               pts_unit='sec')[0][0:-1:ss_rate, ...]
+        except Exception as exception:
+            traceback.print_exc()
+            continue
+        if len(vid_in)==0: #the last chunk already processed
+            break
+        # vid_ss = subsample(vid_in, ss_rate)
+        vid_out = transforms_ego4d(vid_in)
+        out_fname = str(ch_num)+'.'+vp_suffix
+        torchvision.io.write_video(chunks_dir+'/'+out_fname, vid_out, 1, 
+                                   video_codec='libx264')
+        ch_num +=1
 
 
     
