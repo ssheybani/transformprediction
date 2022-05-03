@@ -1,135 +1,99 @@
-import copy, os, itertools, math
-from functools import partialmethod
-import warnings
+#!/usr/bin/env python
+# coding: utf-8
 
-# import numpy as np
-# from matplotlib import pyplot as plt
-# import pandas as pd
-# import seaborn as sns
-
-import torch, torchvision
-from torch import nn
-from tqdm import tqdm 
-import traceback
-
-#%% Network Classes
-torch.set_default_dtype(torch.float32)
+# In[1]:
 
 
+import sys
+print(sys.path)
 
-#%% Preproc functions
-from torchvision.transforms import Compose, Lambda, Normalize
-from torchvision.transforms import _functional_video as torchvid
 
-from torchvision.transforms._transforms_video import (
-    CenterCropVideo,
-    NormalizeVideo
-)
+# In[2]:
 
-mean = [0.45, 0.45, 0.45]
-std = [0.225, 0.225, 0.225]
-ss_rate = 15
-crop_size = 256
 
-subsample = lambda img_seq, ss_rate: img_seq[0:-1:ss_rate, ...]
-to_float = lambda x: (x/255.0).type(torch.float32)
-to_uint = lambda x: (255*x).type(torch.uint8)
-# assumes the frame dimension is the first.
+# import torch
+import os, re
+import cv2
+from tqdm import tqdm
+import numpy as np
+# import torchvision
 
-def short_side_scale(
-    x: torch.Tensor,
-    size: int,
-    interpolation: str = "bilinear",
-) -> torch.Tensor:
-    """
-    Determines the shorter spatial dim of the video (i.e. width or height) and scales
-    it to the given size. To maintain aspect ratio, the longer side is then scaled
-    accordingly.
-    Args:
-        x (torch.Tensor): A video tensor of shape (C, T, H, W) and type torch.float32.
-        size (int): The size the shorter side is scaled to.
-        interpolation (str): Algorithm used for upsampling,
-            options: nearest' | 'linear' | 'bilinear' | 'bicubic' | 'trilinear' | 'area'
-        backend (str): backend used to perform interpolation. Options includes
-            `pytorch` as default, and `opencv`. Note that opencv and pytorch behave
-            differently on linear interpolation on some versions.
-            https://discuss.pytorch.org/t/pytorch-linear-interpolation-is-different-from-pil-opencv/71181
-    Returns:
-        An x-like Tensor with scaled spatial dims.
-    """  # noqa
-    assert len(x.shape) == 4
-    assert x.dtype == torch.float32
-    t, c, h, w = x.shape
-    if w < h:
-        new_h = int(math.floor((float(h) / w) * size))
-        new_w = size
-    else:
-        new_h = size
-        new_w = int(math.floor((float(w) / h) * size))
 
-    return torch.nn.functional.interpolate(
-        x, size=(new_h, new_w), mode=interpolation, align_corners=False,
-        antialias=True
-    )
-        
-transforms_ego4d = Compose(
-    [
-     Lambda(to_float),
-     Lambda(lambda x: torch.permute(x, (0,3,1,2))),
-     Lambda(lambda x: short_side_scale(x, crop_size)),
-     Lambda(lambda x: torch.permute(x, (1,0,2,3))),
-     CenterCropVideo(crop_size=(crop_size, crop_size)),
-     Lambda(lambda x: torch.permute(x, (1,2,3,0))),
-     Lambda(to_uint)
-     ])
-#T,H,W,C
+# In[3]:
 
-#%%% Ego4D Dataset: collect metadata
 
+def center_crop(image, crop_size):
+    center = np.array(image.shape) / 2
+    x = center[1] - crop_size/2
+    y = center[0] - crop_size/2
+
+    crop_img = image[int(y):int(y+crop_size), int(x):int(x+crop_size), :]
+    return crop_img
+
+
+# In[4]:
 
 
 vid_root = r"/N/slate/sheybani/ego4ddata/v1/clips/"
-out_root = r"/N/slate/sheybani/ego4ddata/preprocessed_clips/"
+out_root = r"/N/slate/sheybani/ego4ddata/pp_images/"
 sample_paths = os.listdir(vid_root)
 
-vp = sample_paths[6]
-vid_in = torchvision.io.read_video(vid_root+vp, start_pts=1000., 
-                                   end_pts=1002., pts_unit='sec')[0][0:-1:ss_rate, ...]
-# reader = torchvision.io.VideoReader(vid_root+vp, 'video')
+for i,item in enumerate(sample_paths):
+    suffix = item.split('.')[1]
+    if (suffix !='mp4') and (suffix !='MP4'):
+        del sample_paths[i]
 
-#%%    
-chunk_size = 60 #1 minute per video
+
+# In[5]:
+
+
+new_fps = 2
+crop_size= 256
+
 start_sample = 0
 end_sample = 500
 for i in tqdm(range(start_sample, end_sample)):
-    vp = sample_paths[i]
-    vp_prefix, vp_suffix = vp.split('.')
-    
-    if (vp_suffix !='mp4') and (vp_suffix !='MP4'):
-        continue
+    clip_name = sample_paths[i]
+    new_dir = clip_name.split('.')[0]
+#     new_dir = re.sub(r'\W+', '', new_dir) #remove non-alphanumeric characters
     try:
-        chunks_dir = out_root+vp_prefix
+        chunks_dir = os.path.join(out_root, new_dir)
         os.mkdir(chunks_dir)
     except OSError as error: 
         print(error)
-    ch_num = 0
-    while 1:
-        try:
-            vid_in = torchvision.io.read_video(vid_root+vp, 
-                                               start_pts=ch_num*chunk_size, 
-                                               end_pts=(ch_num+1)*chunk_size, 
-                                               pts_unit='sec')[0][0:-1:ss_rate, ...]
-        except Exception as exception:
-            traceback.print_exc()
-            continue
-        if len(vid_in)==0: #the last chunk already processed
+        
+    fnum_o = 0
+    fnum_n = 0
+    vidcap = cv2.VideoCapture(vid_root+clip_name)
+    orig_fps = vidcap.get(cv2.CAP_PROP_FPS)
+    ds_rate = int(orig_fps/new_fps)
+    while vidcap.isOpened():
+        ret, frame = vidcap.read()
+        if ret: 
+            w,h,_ = frame.shape
+            s_factor = crop_size/min(w,h)
+            frame = cv2.resize(frame, None, fx=s_factor, fy=s_factor, interpolation= cv2.INTER_CUBIC)
+            frame = center_crop(frame, crop_size)
+            fname = os.path.join(chunks_dir, '{:06d}.jpg'.format(fnum_n))
+            cv2.imwrite(fname, frame)
+            fnum_o += ds_rate 
+            vidcap.set(cv2.CAP_PROP_POS_FRAMES, fnum_o)
+            fnum_n +=1
+        else:
+            vidcap.release()
             break
-        # vid_ss = subsample(vid_in, ss_rate)
-        vid_out = transforms_ego4d(vid_in)
-        out_fname = str(ch_num)+'.'+vp_suffix
-        torchvision.io.write_video(chunks_dir+'/'+out_fname, vid_out, 1, 
-                                   video_codec='libx264')
-        ch_num +=1
+#     fnum_o +=1
 
 
-    
+# In[53]:
+
+
+# import matplotlib.pyplot as plt
+# plt.imshow(resize_down)
+
+
+# In[ ]:
+
+
+
+
