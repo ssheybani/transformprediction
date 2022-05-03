@@ -1,0 +1,21 @@
+#!/bin/bash
+#####  Constructed by HPC everywhere #####
+#SBATCH --mail-user=sheybani@iu.edu
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=1
+#SBATCH --cpus-per-task=1
+#SBATCH --time=0-6:0:00
+#SBATCH --mem=58gb
+#SBATCH --partition=gpu
+#SBATCH --mail-type=FAIL,BEGIN,END
+#SBATCH --job-name=job0
+#SBATCH --output=job0out
+#SBATCH --error=job0err
+
+######  Module commands #####
+
+
+
+######  Job commands go below this line #####
+python /N/u/sheybani/BigRed200/github/transformprediction/models/train_cpc0_bigred.py &
+
